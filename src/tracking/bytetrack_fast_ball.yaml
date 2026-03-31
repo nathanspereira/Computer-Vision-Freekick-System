@@ -1,0 +1,9 @@
+tracker_type: bytetrack
+
+track_high_thresh: 0.20 #first stage threshold, and if detections fall below it, tracker may fail to update active tracks
+track_low_thresh: 0.01 #gives bytetrack permission to keep using weaker detections to preserve an id through blur, motion
+new_track_thresh: 0.75 # should reduce spurious new tracks from junk detections, bc new tracks only strat from stronger detections
+match_thresh: 0.90 #was 90, means ByteTrack requires 90% IoU overlap between predicted and detected box to keep same track ID.
+
+track_buffer: 220 # a larger buffer keeps lost tracks alive longer before removal
+fuse_score: True

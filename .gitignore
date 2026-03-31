@@ -1,1 +1,6 @@
-
+artifacts/
+venv/
+.venv/
+*.mov
+*.mp4
+.DS_Store

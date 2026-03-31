@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -16,5 +16,7 @@ class TrackState:
     y: float
     vx: float = 0.0
     vy: float = 0.0
+    w: float = 0.0   # bounding box width from the detection
+    h: float = 0.0   # bounding box height from the detection
     confidence: float = 0.0
     status: TrackStatus = TrackStatus.LOST
