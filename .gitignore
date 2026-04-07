@@ -1,10 +1,43 @@
-artifacts/
-venv/
-.venv/
-*.mov
-*.mp4
-.DS_Store
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# macOS
 .DS_Store
+
+# Environments
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build/cache
+build/
+dist/
+*.egg-info/
+
+# Logs
+*.log
+
+# Model weights
 *.pt
+*.pth
+*.onnx
+
+# Large artifacts
+artifacts/overlays/
+artifacts/logs/
+data/raw/
+data/processed/
+
+# Optional: keep folders but not contents
+# !artifacts/overlays/.gitkeep
+# !artifacts/logs/.gitkeep
