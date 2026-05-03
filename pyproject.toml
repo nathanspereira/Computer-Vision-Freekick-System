@@ -1,1 +1,9 @@
+[project]
+name = "computer-vision-freekick-system"
+version = "0.1.0"
+description = "Computer vision and physics-based free-kick trajectory reconstruction system."
+readme = "README.md"
+requires-python = ">=3.10"
 
+[tool.pytest.ini_options]
+pythonpath = ["."]
