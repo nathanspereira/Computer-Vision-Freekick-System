@@ -40,7 +40,6 @@ The next planned development steps are:
 * Kalman style smoothed ball state tracking
 * Per frame CSV logging of raw position, smoothed position, velocity, confidence, and bounding box size
 * Annotated output video with tracking status overlays
-* Early SIFT based spin/RPM experimentation
 
 ---
 
@@ -58,14 +57,16 @@ The next planned development steps are:
 
 ```text
 artifacts/          Generated overlays, logs, plots, and output files
-configs/            Configuration files and calibration values
 data/               Input data folders and annotations
-docs/               Project documentation and visual assets
 models/             Local model directory; model weights are not tracked
 notebooks/          Jupyter notebooks for experiments and demos
 scripts/            Runnable scripts for pipeline execution and testing
 src/                Core source modules
-tests/              Test files
+data/               Sample CSVs and ignored raw/processed data folders
+docs/assets/        README images, GIFs, and reconstruction previews
+notebooks/          Jupyter notebook for 3D reconstruction demo
+scripts/            Runnable backend pipeline script
+src/                Core detection, tracking, physics, and I/O modules
 ```
 
 ---
