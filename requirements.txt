@@ -5,3 +5,5 @@ jupyter
 
 pandas
 plotly
+
+kaleido

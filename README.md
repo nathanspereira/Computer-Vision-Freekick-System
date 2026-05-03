@@ -90,18 +90,23 @@ tests/              Test files
 
 This GIF shows the current backend pipeline tracking the ball from the behind goal camera view and displaying frame level tracking status overlays.
 
+![Approximate 3D reconstruction](docs/assets/cvfs_3d_reconstruction.png)
+
+This static plot shows the current approximate 3D reconstruction from synchronized left-view and behind-view event points.
+
 The repository also includes a 3D reconstruction demo notebook:
 
 ```text
 
 notebooks/cvfs_demo.ipynb
-'''
+
+```
+
 The notebook uses sample synchronized event points from the left and behind camera views to generate an approximate 3D ball trajectory.
 
 Planned additions:
 
-* 3D or 2D trajectory plot
-* Sample CSV output
+* Sample CSV output explanation
 * Pipeline diagram
 
 ---
@@ -184,8 +189,6 @@ This keeps the repository lightweight while preserving the code needed to run an
 * Add a simple user workflow for selecting a video and running the pipeline
 * Add edge case detection for invalid videos, no ball detected, and no freekick taking place
 * Refactor scripts/run_pipeline.py into smaller modules under src/
-* Add sample CSV output and visual trajectory plots
-* Add README GIFs/images showing the system working
 * Add command line arguments for input/output paths
 * Add lightweight tests for tracking and CSV logging behavior
 
