@@ -197,6 +197,6 @@ This keeps the repository lightweight while preserving the code needed to run an
 
 ## Author
 
-Nathan Pereira  
-Computer Science and Physics  
-Appalachian State University  
+* Nathan Pereira
+* Computer Science and Physics
+* Appalachian State University
