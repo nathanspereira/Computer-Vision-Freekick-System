@@ -6,6 +6,7 @@ __pycache__/
 
 # macOS
 .DS_Store
+Macintosh HD
 
 # Environments
 venv/
@@ -37,7 +38,3 @@ artifacts/overlays/
 artifacts/logs/
 data/raw/
 data/processed/
-
-# Optional: keep folders but not contents
-# !artifacts/overlays/.gitkeep
-# !artifacts/logs/.gitkeep
