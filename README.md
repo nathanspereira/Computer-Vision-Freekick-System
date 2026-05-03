@@ -58,7 +58,6 @@ The next planned development steps are:
 ```text
 artifacts/          Generated overlays, logs, plots, and output files
 data/               Input data folders and annotations
-models/             Local model directory; model weights are not tracked
 notebooks/          Jupyter notebooks for experiments and demos
 scripts/            Runnable scripts for pipeline execution and testing
 src/                Core source modules
