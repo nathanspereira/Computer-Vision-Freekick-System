@@ -49,4 +49,5 @@ def run_sift_test(video_path: str, fps: float = 240.0):
     cap.release()
 
 if __name__ == "__main__":
-    run_sift_test("data/raw/input.mov", fps=240.0)
+    run_sift_test("data/raw/nathan_day4.2.mov", fps=240.0)
+    

@@ -2,6 +2,7 @@ from __future__ import annotations
 from src.physics.ball_state import BallStateTracker
 from math import hypot
 from pathlib import Path
+import csv
 #from src.tracking.goal_region_model import GoalRegionModel
 from src.tracking.initialize_lock import initialize_lock
 from collections import deque
@@ -16,6 +17,7 @@ After working pipeline, make this into separate files for abstraction and modula
 
 def distance_xy(x1: float, y1: float, x2: float, y2: float) -> float:
     return hypot(x1 - x2, y1 - y2)
+
 
 
 #constant velocity predicator (FIX THIS WITH PHYSICS BASED LATER IF NEEDED)
@@ -116,12 +118,35 @@ def choose_best_roi_candidate(
     viable.sort(key=lambda item: (item[0], item[1], item[2]))
     return viable[0][3]
 
+def choose_best_global_candidate(
+    candidates: list[BallTrackCandidate],
+    min_conf: float,
+    min_box_w: float,
+    min_box_h: float,
+) -> BallTrackCandidate | None:
+    viable = [
+        c for c in candidates
+        if c.confidence >= min_conf and c.w >= min_box_w and c.h >= min_box_h
+    ]
+    if not viable:
+        return None
+    return max(viable, key=lambda c: c.confidence)
+
+
+def r2(x):
+    return None if x is None else round(float(x),2)
 
 def run_video_pipeline(
     video_path: str,
     output_csv_path: str,
     output_video_path: str,
+    frames_of_interest: set[int] | None = None,
+    log_all_accepted: bool = False,
 ) -> None:
+
+    if frames_of_interest is None:
+        frames_of_interest = set()
+
     video_path = Path(video_path)
     output_csv_path = Path(output_csv_path)
     output_video_path = Path(output_video_path)
@@ -140,14 +165,18 @@ def run_video_pipeline(
 
     # ROI rescue tuning:
     # keep confidence permissive, but tighten by geometry
-    ROI_CONF_TRIGGER = 0.45 #was 0.55
-    ROI_HALF_SIZE = 140
-    ROI_MAX_DISTANCE = 65.0
-    ROI_MAX_STEP_FROM_LAST_LOCKED = 50.0
+    ROI_CONF_TRIGGER = 0.45 
+    ROI_HALF_SIZE = 200 #was 140
+    ROI_MAX_DISTANCE = 120.0 #was 65.0
+    ROI_MAX_STEP_FROM_LAST_LOCKED = 90.0 #was 50.0
     ROI_MIN_ACCEPT_CONF = 0.05
     ROI_MAX_CONSECUTIVE_FRAMES = 15 #was 8, gives ROI more room to brdige the goal sequence
-
     HOLD_LAST_BOX_FRAMES = 5 #changed from 2, 5 works better than 2 and 8
+
+    SEARCH_MIN_BOX_W = 10.0
+    SEARCH_MIN_BOX_H = 10.0 
+    SEARCH_AFTER_MISSES = HOLD_LAST_BOX_FRAMES + 1
+    SEARCH_MIN_CONF = 0.15
 
     # trajectory drawing/plotting
     TRAJECTORY_MAX_LEN = 400
@@ -155,7 +184,7 @@ def run_video_pipeline(
     TRAJECTORY_LINE_THICKNESS = 2
 
     ACQUISITION_FRAMES = 10
-    INIT_MIN_CONF = 0.30
+    INIT_MIN_CONF = 0.20 
     INIT_MIN_BOX_W = 10.0
     INIT_MIN_BOX_H = 10.0
 
@@ -184,6 +213,22 @@ def run_video_pipeline(
         raise RuntimeError(f"Couldn't open video writer: {output_video_path}")
 
 
+    csv_file = open(output_csv_path, "w", newline="")
+    csv_writer = csv.writer(csv_file)
+    csv_writer.writerow([
+        "frame_idx",
+        "status",
+        "raw_x",
+        "raw_y",
+        "smooth_x",
+        "smooth_y",
+        "vx",
+        "vy",
+        "confidence",
+        "box_w",
+        "box_h",
+    ])
+
     frame_idx = 0
 
     locked_track_id: int | None = None
@@ -201,8 +246,28 @@ def run_video_pipeline(
 
     acquisition_candidates = []
     initial_lock_done = False 
+
+    #if lose the ball, have the csv report this instead of holding last known location
+    smooth_x = smooth_y = vx = vy = None 
+    status = "LOST"
+    confidence = None
+    raw_x = raw_y = None 
+    box_w = box_h = None 
+    searching_mode = False
+
     #loop that reads frame by frame
     while True:
+
+        #reset csv info at start of frame
+        smooth_x = smooth_y = vx = vy = None 
+        status = "LOST"
+        confidence = None 
+        raw_x = raw_y = None 
+        box_w = box_h = None
+        locked_candidate: BallTrackCandidate | None = None
+        held_prediction = None 
+        used_roi_fallback = False
+
         valid, frame = cap.read()
         if not valid:
             break
@@ -248,12 +313,6 @@ def run_video_pipeline(
             continue
 
 
-
-        if frame_idx % 50 == 0:
-            print(f"Frame {frame_idx}: {len(candidates)} candidates")
-
-
-        locked_candidate: BallTrackCandidate | None = None
         predicted_center = predict_next_center(locked_history, frame_idx)
         if predicted_center is not None:
             px, py = int(predicted_center[0]), int(predicted_center[1])
@@ -331,23 +390,29 @@ def run_video_pipeline(
                         )
                         used_roi_fallback = True
 
-        held_prediction = None
+
         if locked_candidate is not None:
             # trusted track or trusted ROI rescue
-
+            searching_mode = False
             #feed raw yolo centers to Kalman filter
             smooth_x, smooth_y, vx, vy = tracker.update(locked_candidate.x, locked_candidate.y)
+            status = "ROI" if used_roi_fallback else "LOCKED"
+            raw_x = locked_candidate.x 
+            raw_y = locked_candidate.y 
+            confidence = locked_candidate.confidence 
+            box_w = locked_candidate.w 
+            box_h = locked_candidate.h
 
             #draw smoothed kalman state
 
-            cv2.circle(frame, (int(smooth_x), int(smooth_y)), 6, (255, 0, 0), -1)
+            cv2.circle(frame, (int(smooth_x), int(smooth_y)), 6, (0, 255, 255), -1)
             cv2.putText(
                 frame, 
                 f"Vx:{vx:.1f} Vy:{vy:.1f}", 
                 (int(smooth_x) + 10, int(smooth_y)), 
                 cv2.FONT_HERSHEY_SIMPLEX, 
                 0.5, 
-                (255, 0, 0), 
+                (0, 255, 255), 
                 2
             )
             locked_history.append((frame_idx, locked_candidate.x, locked_candidate.y))
@@ -366,6 +431,59 @@ def run_video_pipeline(
 
             if predicted_center is not None and misses_since_locked <= HOLD_LAST_BOX_FRAMES:
                 held_prediction = predicted_center
+            
+        if locked_candidate is None and held_prediction is None and misses_since_locked >= SEARCH_AFTER_MISSES:
+            searching_mode = True
+            last_roi_box = None
+
+
+
+        if searching_mode and locked_candidate is None:
+            global_candidates = detector.detect(frame, frame_idx)
+
+            best_global = choose_best_global_candidate(
+                candidates=global_candidates,
+                min_conf=SEARCH_MIN_CONF,
+                min_box_w=SEARCH_MIN_BOX_W,
+                min_box_h=SEARCH_MIN_BOX_H,
+            )
+
+            if best_global is not None:
+                locked_candidate = BallTrackCandidate(
+                    frame_idx=best_global.frame_idx,
+                    track_id=locked_track_id,
+                    x=best_global.x,
+                    y=best_global.y,
+                    w=best_global.w,
+                    h=best_global.h,
+                    confidence=best_global.confidence,
+                    class_id=best_global.class_id,
+                )
+                
+                searching_mode = False
+                misses_since_locked = 0
+                last_locked_w = locked_candidate.w
+                last_locked_h = locked_candidate.h
+
+                tracker.initialize(
+                    locked_candidate.x,
+                    locked_candidate.y,
+                    frame_idx=frame_idx,
+                )
+
+                smooth_x = locked_candidate.x
+                smooth_y = locked_candidate.y
+                vx = 0.0
+                vy = 0.0
+
+                locked_history.append((frame_idx, locked_candidate.x, locked_candidate.y))
+                status = "SEARCHING_RELOCK"
+                raw_x = locked_candidate.x
+                raw_y = locked_candidate.y
+                confidence = locked_candidate.confidence
+                box_w = locked_candidate.w
+                box_h = locked_candidate.h
+                trajectory_points.append((int(locked_candidate.x), int(locked_candidate.y)))
 
         # draw connected dot plot of successful locked pings only
 
@@ -388,8 +506,15 @@ def run_video_pipeline(
             x2 = int(locked_candidate.x + locked_candidate.w / 2)
             y2 = int(locked_candidate.y + locked_candidate.h / 2)
 
-            color = (0, 255, 0) if not used_roi_fallback else (255, 0, 255)
-            mode = "TRACK" if not used_roi_fallback else "ROI"
+            if status == "SEARCHING_RELOCK":
+                color = (0,165, 255)
+                mode = "RELOCK"
+            elif used_roi_fallback:
+                color = (255, 0, 255)
+                mode = "ROI"
+            else:
+                color = (0, 255, 0)
+                mode = "TRACK"
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
@@ -410,11 +535,14 @@ def run_video_pipeline(
             y1 = int(pred_y - last_locked_h / 2)
             x2 = int(pred_x + last_locked_w / 2)
             y2 = int(pred_y + last_locked_h / 2)
+            status = "HOLD"
+            raw_x = held_prediction[0]
+            raw_y = held_prediction[1]
 
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
             cv2.putText(
                 frame,
-                f"LOCKED id={locked_track_id} HOLD",
+                f"HOLD id={locked_track_id}",
                 (x1, max(20, y1 - 25)),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.55,
@@ -423,6 +551,29 @@ def run_video_pipeline(
             )
             cv2.circle(frame, (int(pred_x), int(pred_y)), 5, (255, 255, 0), -1)
 
+
+
+        cv2.putText(
+            frame,
+            f"STATUS: {status}",
+            (20, 80),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2
+        )
+
+        if searching_mode:
+            cv2.putText(
+                frame,
+                "SEARCHING",
+                (20, 40),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.9,
+                (0, 255, 255),
+                2,
+            )
+            
         if last_roi_box is not None:
             rx1, ry1, rx2, ry2 = last_roi_box 
             cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), (0, 0, 255), 1)
@@ -435,19 +586,78 @@ def run_video_pipeline(
                 (0, 0, 255), 
                 1
             )
+    
+
+        cv2.putText(
+            frame,
+            f"FRAME: {frame_idx}",
+            (20, 120),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2
+        )
+
+        should_log = False
+        if log_all_accepted:
+            should_log = status in {"LOCKED", "ROI", "HOLD", "SEARCHING_RELOCK"}
+        elif frame_idx in frames_of_interest:
+            should_log = True 
+        if should_log:
+            csv_writer.writerow([
+                frame_idx,
+                status,
+                r2(raw_x),
+                r2(raw_y),
+                r2(smooth_x),
+                r2(smooth_y),
+                r2(vx),
+                r2(vy),
+                r2(confidence),
+                r2(box_w),
+                r2(box_h),
+            ])
+        
+
+        if frame_idx % 100 == 0:
+            if status in {"LOCKED", "ROI", "SEARCHING_RELOCK"}:
+                print(
+                    f"Frame {frame_idx}: TRACKING "
+                    f"status={status} "
+                    f"x={raw_x:.1f} "
+                    f"y={raw_y:.1f} "
+                    f"conf={confidence:.2f}"
+                )
+            elif status == "HOLD":
+                print(
+                    f"Frame {frame_idx}: HOLD "
+                    f"x={raw_x:.1f} "
+                    f"y={raw_y:.1f}"
+                )
+            elif searching_mode:
+                print(f"Frame {frame_idx}: SEARCHING")
+            else:
+                print(f"Frame {frame_idx}: LOST")
+        
         writer.write(frame)
 
         frame_idx += 1
 
+
     writer.release()
     cap.release()
     cv2.destroyAllWindows()
+    csv_file.close()
 
 
 if __name__ == "__main__":
     run_video_pipeline(
         #video_path="data/raw/input.mov",
-        video_path="data/raw/nathan_day3.2.mov",
-        output_csv_path="artifacts/logs/unused1.csv",
-        output_video_path="artifacts/overlays/newest_output.mp4",
+        video_path="data/raw/cam1.mov",
+        output_csv_path="artifacts/logs/cam1.csv",
+        output_video_path="artifacts/overlays/cam1.mp4",
+        frames_of_interest = set(), 
+        log_all_accepted = True,
     )
+
+    
