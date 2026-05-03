@@ -86,11 +86,12 @@ tests/              Test files
 
 ## Example Output
 
-Demo images and GIFs will be added in docs/assets/.
+![Behind camera tracking demo](docs/assets/tracking_behind_demo.gif)
 
-Planned examples:
+This GIF shows the current backend pipeline tracking the ball from the behind goal camera view and displaying frame level tracking status overlays.
 
-* Tracking overlay GIF
+Planned additions:
+
 * 3D or 2D trajectory plot
 * Sample CSV output
 * Pipeline diagram
