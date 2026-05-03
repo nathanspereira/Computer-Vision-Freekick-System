@@ -166,6 +166,7 @@ This keeps the repository lightweight while preserving the code needed to run an
 * The current version requires manually setting input and output paths inside the script.
 * The front end upload flow is not yet implemented.
 * Edge case handling for no ball detected or no freekick detected is still planned.
+* MVP depends on red ball, as YOLO fails with low contrast (White ball against white net background)
 
 ---
 
