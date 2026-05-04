@@ -430,9 +430,12 @@ def run_video_pipeline(
             box_w = locked_candidate.w 
             box_h = locked_candidate.h
 
-            #draw smoothed kalman state
+            #Draw smoothed ball centroid for user demo
 
             cv2.circle(frame, (int(smooth_x), int(smooth_y)), 6, (0, 255, 255), -1)
+            #code for vx and vy in pixels
+            #useful for finding max height (vy = 0)
+            """
             cv2.putText(
                 frame, 
                 f"Vx:{vx:.1f} Vy:{vy:.1f}", 
@@ -442,9 +445,11 @@ def run_video_pipeline(
                 (0, 255, 255), 
                 2
             )
+            """
             locked_history.append((frame_idx, locked_candidate.x, locked_candidate.y))
             motion_positions.append((locked_candidate.x, locked_candidate.y))
-            trajectory_points.append((int(locked_candidate.x), int(locked_candidate.y)))
+            #trajectory_points.append((int(locked_candidate.x), int(locked_candidate.y)))
+            trajectory_points.append((int(smooth_x), int(smooth_y)))
             last_locked_w = locked_candidate.w
             last_locked_h = locked_candidate.h
             misses_since_locked = 0
@@ -455,7 +460,7 @@ def run_video_pipeline(
             
             if len(locked_history) > 0:
                 pred_x, pred_y, vx, vy = tracker.predict_blind()
-                cv2.circle(frame, (int(pred_x), int(pred_y)), 6, (255, 255, 0), -1)
+                #cv2.circle(frame, (int(pred_x), int(pred_y)), 6, (255, 255, 0), -1)
 
             if predicted_center is not None and misses_since_locked <= HOLD_LAST_BOX_FRAMES:
                 held_prediction = predicted_center
@@ -512,23 +517,24 @@ def run_video_pipeline(
                 confidence = locked_candidate.confidence
                 box_w = locked_candidate.w
                 box_h = locked_candidate.h
-                trajectory_points.append((int(locked_candidate.x), int(locked_candidate.y)))
-
-        # draw connected dot plot of successful locked pings only
+                trajectory_points.append((int(smooth_x), int(smooth_y)))
+        
+    
+        # draw clean user facing trajectory overlay with smoothed centroids
 
         if len(trajectory_points) >= 2:
             pts = np.array(trajectory_points, dtype=np.int32)
             cv2.polylines(
-            frame,
-            [pts],
-            isClosed=False,
-            color=(0, 0, 255),
-            thickness=TRAJECTORY_LINE_THICKNESS,
-            )
+                frame,
+                [pts],
+                isClosed=False,
+                color=(0,0,255),
+                thickness=TRAJECTORY_LINE_THICKNESS
+                )
 
         for px, py in trajectory_points:
             cv2.circle(frame, (px, py), TRAJECTORY_DOT_RADIUS, (0, 0, 255), -1)
-
+        """
         if locked_candidate is not None:
             x1 = int(locked_candidate.x - locked_candidate.w / 2)
             y1 = int(locked_candidate.y - locked_candidate.h / 2)
@@ -564,10 +570,12 @@ def run_video_pipeline(
             y1 = int(pred_y - last_locked_h / 2)
             x2 = int(pred_x + last_locked_w / 2)
             y2 = int(pred_y + last_locked_h / 2)
+    """
+        if held_prediction is not None and locked_track_id is not None:
             status = "HOLD"
             raw_x = held_prediction[0]
             raw_y = held_prediction[1]
-
+        """
             cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 255, 0), 2)
             cv2.putText(
                 frame,
@@ -626,7 +634,7 @@ def run_video_pipeline(
             (255, 255, 255),
             2
         )
-
+        """
         should_log = False
         if log_all_accepted:
             should_log = status in {"LOCKED", "ROI", "HOLD", "SEARCHING_RELOCK"}
