@@ -142,7 +142,7 @@ def run_video_pipeline(
     output_video_path: str,
     frames_of_interest: set[int] | None = None,
     log_all_accepted: bool = False,
-) -> None:
+) -> dict[str, object]:
 
     if frames_of_interest is None:
         frames_of_interest = set()
@@ -151,12 +151,24 @@ def run_video_pipeline(
     output_csv_path = Path(output_csv_path)
     output_video_path = Path(output_video_path)
 
+    def result(
+        success: bool,
+        message: str,
+        include_outputs: bool = False,
+    ) -> dict[str, object]:
+        return {
+            "success": success,
+            "message": message,
+            "output_video_path": str(output_video_path) if include_outputs else None,
+            "output_csv_path": str(output_csv_path) if include_outputs else None,
+        }
+
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     output_video_path.parent.mkdir(parents=True, exist_ok=True)
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
-        raise RuntimeError(f"Couldn't open video: {video_path}")
+        return result(False, f"Video cannot be opened: {video_path}")
 
     MIN_BOX_W = 18
     MIN_BOX_H = 18
@@ -188,6 +200,9 @@ def run_video_pipeline(
     INIT_MIN_BOX_W = 10.0
     INIT_MIN_BOX_H = 10.0
 
+    MIN_KICK_MOTION_POINTS = 4
+    MIN_KICK_DISPLACEMENT_PX = 40.0
+
     #detection delcaration
     detector = YOLODetector(
         model_path="yolo26m.pt",
@@ -207,10 +222,20 @@ def run_video_pipeline(
         fps,
         (width, height),
     )
+    if not writer.isOpened():
+        writer.release()
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        writer = cv2.VideoWriter(
+            str(output_video_path),
+            fourcc,
+            fps,
+            (width, height),
+        )
 
     #prompts could not open video
     if not writer.isOpened():
-        raise RuntimeError(f"Couldn't open video writer: {output_video_path}")
+        cap.release()
+        return result(False, f"Video writer cannot be opened: {output_video_path}")
 
 
     csv_file = open(output_csv_path, "w", newline="")
@@ -246,6 +271,7 @@ def run_video_pipeline(
 
     acquisition_candidates = []
     initial_lock_done = False 
+    motion_positions: list[tuple[float, float]] = []
 
     #if lose the ball, have the csv report this instead of holding last known location
     smooth_x = smooth_y = vx = vy = None 
@@ -307,6 +333,7 @@ def run_video_pipeline(
                     locked_history.append(
                             (locked_candidate.frame_idx, locked_candidate.x, locked_candidate.y)
                     )
+                    motion_positions.append((locked_candidate.x, locked_candidate.y))
                 else:
                     acquisition_candidates.pop(0)
             frame_idx += 1
@@ -416,6 +443,7 @@ def run_video_pipeline(
                 2
             )
             locked_history.append((frame_idx, locked_candidate.x, locked_candidate.y))
+            motion_positions.append((locked_candidate.x, locked_candidate.y))
             trajectory_points.append((int(locked_candidate.x), int(locked_candidate.y)))
             last_locked_w = locked_candidate.w
             last_locked_h = locked_candidate.h
@@ -477,6 +505,7 @@ def run_video_pipeline(
                 vy = 0.0
 
                 locked_history.append((frame_idx, locked_candidate.x, locked_candidate.y))
+                motion_positions.append((locked_candidate.x, locked_candidate.y))
                 status = "SEARCHING_RELOCK"
                 raw_x = locked_candidate.x
                 raw_y = locked_candidate.y
@@ -649,9 +678,47 @@ def run_video_pipeline(
     cv2.destroyAllWindows()
     csv_file.close()
 
+    if frame_idx == 0:
+        return result(False, "Video opened, but no frames were read.")
+
+    if not initial_lock_done:
+        return result(
+            False,
+            "No viable lock was found during acquisition.",
+        )
+
+    if len(motion_positions) < MIN_KICK_MOTION_POINTS:
+        return result(
+            False,
+            "Ball detected, but there were not enough tracked motion points to confirm a freekick.",
+            include_outputs=True,
+        )
+
+    start_x, start_y = motion_positions[0]
+    max_displacement = max(
+        distance_xy(start_x, start_y, x, y)
+        for x, y in motion_positions
+    )
+    motion_threshold = max(MIN_KICK_DISPLACEMENT_PX, min(width, height) * 0.04)
+    if max_displacement < motion_threshold:
+        return result(
+            False,
+            (
+                "Ball detected, but insufficient movement/no kick motion was detected "
+                f"(max displacement {max_displacement:.1f}px, threshold {motion_threshold:.1f}px)."
+            ),
+            include_outputs=True,
+        )
+
+    return result(
+        True,
+        f"Processed video successfully. Max ball displacement: {max_displacement:.1f}px.",
+        include_outputs=True,
+    )
+
 
 if __name__ == "__main__":
-    run_video_pipeline(
+    pipeline_result = run_video_pipeline(
         #video_path="data/raw/input.mov",
         video_path="data/raw/cam1.mov",
         output_csv_path="artifacts/logs/cam1.csv",
@@ -659,5 +726,5 @@ if __name__ == "__main__":
         frames_of_interest = set(), 
         log_all_accepted = True,
     )
-
+    print(pipeline_result["message"])
 
